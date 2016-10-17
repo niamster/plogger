@@ -6,6 +6,7 @@ import argparse
 import math
 import string
 import sys
+from asyncore import file_dispatcher, loop
 
 B_SUFFIX = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
 b_suffix = [_.lower() for _ in B_SUFFIX]
@@ -44,12 +45,44 @@ handler = RotatingFileHandler(args.file[0], maxBytes=unbytify(args.size), backup
 handler.setFormatter(formatter)
 root.addHandler(handler)
 
-while True:
-    try:
-        line = sys.stdin.readline()
-        line = line.strip('\n')
-        if not line: continue
-        root.info(line)
+class Reader(file_dispatcher, object):
+    ignore_log_types = frozenset(['info'])
+    def __init__(self):
+        self._buf = []
+        super(Reader, self).__init__(sys.stdin.fileno())
+
+    def writable(self):
+        return False
+
+    def recv(self, ign=None):
+        return sys.stdin.read(1)
+
+    def handle_close(self):
+        if self.process() == 0:
+            self.flush()
+            root.info('plogger: stdin of parent process was closed')
+            self.close()
+
+    def flush(self):
+        root.info(''.join(self._buf))
         handler.flush()
-    except KeyboardInterrupt:
-        break
+        self._buf = []
+
+    def process(self):
+        count = 0
+        for c in self.recv():
+            count += 1
+            if c in ['\n']:
+                self.flush()
+            else:
+                self._buf += [c]
+        return count
+
+    def handle_read(self):
+        self.process()
+
+try:
+    Reader()
+    loop(use_poll=True)
+except KeyboardInterrupt:
+    pass
