@@ -1,0 +1,55 @@
+#!/usr/bin/env python2
+
+import logging
+from logging.handlers import RotatingFileHandler
+import argparse
+import math
+import string
+import sys
+
+B_SUFFIX = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
+b_suffix = [_.lower() for _ in B_SUFFIX]
+
+def unbytify(ovalue):
+    value = ovalue.strip().lower()
+    mult = 1
+    for x in xrange(len(b_suffix)-1, -1, -1):
+        try:
+            v, rest = value.split(b_suffix[x][0])
+            rest = (b_suffix[x][0] + rest).strip()
+            if rest != b_suffix[x] and rest != b_suffix[x][0]:
+                raise ValueError
+            value, mult = v, math.pow(1024, x)
+            break
+        except ValueError:
+            continue
+    try:
+        return int(string.atof(value) * mult)
+    except ValueError:
+        raise ValueError("Invalid value %s (permitted suffixes: %s)" % (ovalue, ', '.join(B_SUFFIX)))
+
+aparser = argparse.ArgumentParser()
+aparser.add_argument('-c', '--count', default=10, help='Max log files', type=int)
+aparser.add_argument('-s', '--size', default='1M', help='Max log file size')
+aparser.add_argument('-d', '--date', default=False, help='Prepend the date before logging a message', action='store_true')
+aparser.add_argument('file', help='Log file name', nargs=1)
+args = aparser.parse_args()
+
+fmt = '%(message)s'
+if args.date: fmt = '%(asctime)s ' + fmt
+formatter = logging.Formatter(fmt)
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+handler = RotatingFileHandler(args.file[0], maxBytes=unbytify(args.size), backupCount=args.count)
+handler.setFormatter(formatter)
+root.addHandler(handler)
+
+while True:
+    try:
+        line = sys.stdin.readline()
+        line = line.strip('\n')
+        if not line: continue
+        root.info(line)
+        handler.flush()
+    except KeyboardInterrupt:
+        break
