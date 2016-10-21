@@ -73,7 +73,6 @@ class Reader(file_dispatcher, object):
     def handle_close(self):
         if self.process() == 0:
             self.flush()
-            root.info('plogger: stdin of parent process was closed')
             self.close()
 
     def flush(self):
