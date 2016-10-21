@@ -6,7 +6,18 @@ import argparse
 import math
 import string
 import sys
+import os
+import errno
 from asyncore import file_dispatcher, loop
+
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 B_SUFFIX = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
 b_suffix = [_.lower() for _ in B_SUFFIX]
@@ -35,6 +46,8 @@ aparser.add_argument('-s', '--size', default='1M', help='Max log file size')
 aparser.add_argument('-d', '--date', default=False, help='Prepend the date before logging a message', action='store_true')
 aparser.add_argument('file', help='Log file name', nargs=1)
 args = aparser.parse_args()
+
+mkdir_p(os.path.dirname(args.file[0]))
 
 fmt = '%(message)s'
 if args.date: fmt = '%(asctime)s ' + fmt
