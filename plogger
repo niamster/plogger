@@ -68,7 +68,7 @@ class Reader(file_dispatcher, object):
         return False
 
     def recv(self, ign=None):
-        return sys.stdin.read(1)
+        return sys.stdin.read()
 
     def handle_close(self):
         if self.process() == 0:
@@ -81,10 +81,10 @@ class Reader(file_dispatcher, object):
         self._buf = []
 
     def process(self):
-        count = 0
-        for c in self.recv():
-            count += 1
-            if c in ['\n']:
+        stream = self.recv()
+        count = len(stream)
+        for c in stream:
+            if c == '\n':
                 self.flush()
             else:
                 self._buf += [c]
