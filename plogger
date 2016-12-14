@@ -44,6 +44,7 @@ aparser = argparse.ArgumentParser()
 aparser.add_argument('-c', '--count', default=10, help='Max log files', type=int)
 aparser.add_argument('-s', '--size', default='1M', help='Max log file size')
 aparser.add_argument('-d', '--date', default=False, help='Prepend the date before logging a message', action='store_true')
+aparser.add_argument('--stdout', default=False, help='Log to stdout as well', action='store_true')
 aparser.add_argument('file', help='Log file name', nargs=1)
 args = aparser.parse_args()
 
@@ -57,6 +58,10 @@ root.setLevel(logging.DEBUG)
 handler = RotatingFileHandler(args.file[0], maxBytes=unbytify(args.size), backupCount=args.count)
 handler.setFormatter(formatter)
 root.addHandler(handler)
+if args.stdout:
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
 
 class Reader(file_dispatcher, object):
     ignore_log_types = frozenset(['info'])
