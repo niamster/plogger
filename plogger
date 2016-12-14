@@ -81,6 +81,7 @@ class Reader(file_dispatcher, object):
             self.close()
 
     def flush(self):
+        if not self._buf: return
         root.info(''.join(self._buf))
         handler.flush()
         self._buf = []
