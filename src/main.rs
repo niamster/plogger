@@ -27,6 +27,10 @@ lazy_static! {
     static ref B_SUFFIX_LOWER: Vec<String> = B_SUFFIX.iter().map(|x| x.to_lowercase()).collect();
 }
 
+const BUF_SIZE: usize = 4096;
+const NL: u8 = '\n' as u8;
+const CR: u8 = '\r' as u8;
+
 #[derive(Debug)]
 enum ParseError {
     Invalid,
@@ -153,11 +157,15 @@ fn main() {
             let readiness = event.readiness();
 
             if readiness.is_readable() {
-                let mut bit = [0; 1];
-                match stdin.read_exact(&mut bit) {
+                let mut chunk = [0; 1];
+                match stdin.read_exact(&mut chunk) {
                     Ok(_) => {
-                        buffer.push(bit[0]);
-                        if buffer.len() > 1024 || bit[0] == '\n' as u8 {
+                        let ch = chunk[0];
+                        if ch == CR {
+                            continue;
+                        }
+                        buffer.push(ch);
+                        if ch == NL || buffer.len() == BUF_SIZE {
                             log!("{}", String::from_utf8_lossy(&buffer));
                             buffer.clear();
                         }
@@ -170,6 +178,9 @@ fn main() {
             }
 
             if UnixReady::from(readiness).is_hup()  {
+                if buffer.len() > 0 {
+                    log!("{}", String::from_utf8_lossy(&buffer));
+                }
                 return;
             }
         }
