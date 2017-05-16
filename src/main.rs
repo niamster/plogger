@@ -9,10 +9,18 @@ use argparse::{ArgumentParser, StoreTrue, Store};
 #[macro_use]
 extern crate lazy_static;
 
+extern crate libc;
+
+extern crate mio;
+use mio::{Events, Poll, Ready, PollOpt, Token};
+use mio::unix::{EventedFd, UnixReady};
+
 use std::ops::Deref;
 use std::path::Path;
-use std::io::Write;
+use std::io::{Write, Read};
 use std::process;
+use std::fs::File;
+use std::os::unix::io::FromRawFd;
 
 lazy_static! {
     static ref B_SUFFIX: Vec<&'static str> = vec!["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
@@ -64,6 +72,18 @@ fn unbytify(value: &String) -> Result<u64, ParseError> {
     Err(ParseError::Invalid)
 }
 
+pub fn set_nonblock(fd: libc::c_int) -> Result<(), ()> {
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        let res = libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        if res == -1 {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 fn main() {
     wp::init();
 
@@ -108,16 +128,50 @@ fn main() {
 
     wp_register_handler!(rotating_file::handler(Path::new(&file), count, size));
 
-    let stdin = std::io::stdin();
+    let mut stdin = unsafe { File::from_raw_fd(libc::STDIN_FILENO) };
+    set_nonblock(libc::STDIN_FILENO).unwrap();
+
+    let poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(1);
+    let token = Token(0);
+
+    poll.register(&EventedFd(&libc::STDIN_FILENO),
+                  token,
+                  Ready::readable() | UnixReady::hup(),
+                  PollOpt::edge() | PollOpt::level()
+    ).unwrap();
+
+    let mut buffer = Vec::new();
     loop {
-        let mut buffer = String::new();
-        match stdin.read_line(&mut buffer) {
-            Ok(count) if count > 0 => {
-                log!("{}", buffer);
-            },
-            _ => {
-                break;
-            },
+        poll.poll(&mut events, None).unwrap();
+
+        for event in &events {
+            if token != event.token() {
+                continue;
+            }
+
+            let readiness = event.readiness();
+
+            if readiness.is_readable() {
+                let mut bit = [0; 1];
+                match stdin.read_exact(&mut bit) {
+                    Ok(_) => {
+                        buffer.push(bit[0]);
+                        if buffer.len() > 1024 || bit[0] == '\n' as u8 {
+                            log!("{}", String::from_utf8_lossy(&buffer));
+                            buffer.clear();
+                        }
+                    },
+                    _ => {
+                        break;
+                    },
+                }
+                continue;
+            }
+
+            if UnixReady::from(readiness).is_hup()  {
+                return;
+            }
         }
     }
 }
