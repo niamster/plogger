@@ -15,7 +15,6 @@ extern crate mio;
 use mio::{Events, Poll, Ready, PollOpt, Token};
 use mio::unix::{EventedFd, UnixReady};
 
-use std::ops::Deref;
 use std::path::Path;
 use std::io::{Write, Read};
 use std::process;
@@ -29,7 +28,6 @@ lazy_static! {
 
 const BUF_SIZE: usize = 4096;
 const NL: u8 = '\n' as u8;
-const CR: u8 = '\r' as u8;
 
 #[derive(Debug)]
 enum ParseError {
@@ -88,6 +86,11 @@ pub fn set_nonblock(fd: libc::c_int) -> Result<(), ()> {
     }
 }
 
+fn do_log(buffer: &mut Vec<u8>) {
+    log!("{}", String::from_utf8_lossy(buffer));
+    buffer.clear();
+}
+
 fn main() {
     wp::init();
 
@@ -119,18 +122,15 @@ fn main() {
     if stdout {
         wp_register_handler!(stdout::handler());
     }
-
-    if date {
-        wp_set_formatter!(Box::new(|record| {
-            format!("{} {}", record.ts_utc(), record.msg())
-        }));
-    } else {
-        wp_set_formatter!(Box::new(|record| {
-            record.msg().deref().clone()
-        }));
-    }
-
     wp_register_handler!(rotating_file::handler(Path::new(&file), count, size));
+
+    wp_set_formatter!(Box::new(move |record| {
+        if date {
+            format!("{} {}\n", record.ts_utc(), record.msg())
+        } else {
+            format!("{}\n", record.msg())
+        }
+    }));
 
     let mut stdin = unsafe { File::from_raw_fd(libc::STDIN_FILENO) };
     set_nonblock(libc::STDIN_FILENO).unwrap();
@@ -161,13 +161,15 @@ fn main() {
                 match stdin.read_exact(&mut chunk) {
                     Ok(_) => {
                         let ch = chunk[0];
-                        if ch == CR {
-                            continue;
-                        }
-                        buffer.push(ch);
-                        if ch == NL || buffer.len() == BUF_SIZE {
-                            log!("{}", String::from_utf8_lossy(&buffer));
-                            buffer.clear();
+                        if ch == NL {
+                            if !buffer.is_empty() {
+                                do_log(&mut buffer);
+                            }
+                        } else {
+                            buffer.push(ch);
+                            if buffer.len() == BUF_SIZE {
+                                do_log(&mut buffer);
+                            }
                         }
                     },
                     _ => {
@@ -179,7 +181,7 @@ fn main() {
 
             if UnixReady::from(readiness).is_hup()  {
                 if buffer.len() > 0 {
-                    log!("{}", String::from_utf8_lossy(&buffer));
+                    do_log(&mut buffer);
                 }
                 return;
             }
