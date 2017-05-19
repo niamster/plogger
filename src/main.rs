@@ -3,11 +3,11 @@ extern crate woodpecker;
 use woodpecker as wp;
 use wp::handlers::{rotating_file, stdout};
 
+extern crate unbytify;
+use unbytify::*;
+
 extern crate argparse;
 use argparse::{ArgumentParser, StoreTrue, Store};
-
-#[macro_use]
-extern crate lazy_static;
 
 extern crate libc;
 
@@ -21,58 +21,8 @@ use std::process;
 use std::fs::File;
 use std::os::unix::io::FromRawFd;
 
-lazy_static! {
-    static ref B_SUFFIX: Vec<&'static str> = vec!["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"];
-    static ref B_SUFFIX_LOWER: Vec<String> = B_SUFFIX.iter().map(|x| x.to_lowercase()).collect();
-}
-
 const BUF_SIZE: usize = 4096;
 const NL: u8 = '\n' as u8;
-
-#[derive(Debug)]
-enum ParseError {
-    Invalid,
-}
-
-fn unbytify(value: &String) -> Result<u64, ParseError> {
-    let value = value.to_lowercase();
-    let value = value.trim();
-
-    // w/o any suffix
-    match value.parse() {
-        Ok(x) => return Ok(x),
-        _ => {},
-    }
-
-    for (idx, suffix) in B_SUFFIX_LOWER.iter().enumerate().rev() {
-        let sfx = &suffix[..1];
-        let mut res = value.split(sfx);
-
-        let val: f64 = match res.next() {
-            Some(x) => {
-                match x.parse() {
-                    Ok(x) => x,
-                    _ => continue,
-                }
-            },
-            _ => continue,
-        };
-
-        match res.next() {
-            Some(rest) => {
-                if rest.len() > 0 && rest != "b" && rest != "ib" {
-                    return Err(ParseError::Invalid);
-                }
-            },
-            _ => {},
-        };
-
-        let val = val * 1024u64.pow(idx as u32) as f64;
-        return Ok(val.round() as u64);
-    }
-
-    Err(ParseError::Invalid)
-}
 
 pub fn set_nonblock(fd: libc::c_int) -> Result<(), ()> {
     unsafe {
