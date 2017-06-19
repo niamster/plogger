@@ -42,7 +42,7 @@ fn do_log(buffer: &mut Vec<u8>) {
 }
 
 fn main() {
-    wp::init();
+    wp_init!();
 
     let mut count = 10;
     let mut size = "1M".to_string();
@@ -72,7 +72,7 @@ fn main() {
     if stdout {
         wp_register_handler!(stdout::handler());
     }
-    wp_register_handler!(rotating_file::handler(Path::new(&file), count, size));
+    wp_register_handler!(rotating_file::handler(Path::new(&file), count, size).unwrap());
 
     wp_set_formatter!(Box::new(move |record| {
         if date {
